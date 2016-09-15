@@ -9,20 +9,24 @@ pathRest = '/Thres=0.0005,MedRad=2/';
 % mac home:
 % stackBasePath = '/Volumes/Untitled/APS_Tomography/Exp041/Thres=0.0005,MedRad=0/bin_part_proj_0121_scan_'
 % win OS:
-%pathBase = 'f:\aps_2-bm_2016_08\exp';
-% pathRest='_d07t05n03_v0.068mlmin-1_c02.5e-4w%_multiplescantest_dimax_2x_100mm_0.4msecexptime_360degpersec_rolling_100umluag_1mmc2mmglass_2.657mrad_usarm1.1502_monoy_-10.0_ahutch\';
+% pathBase = 'f:\aps_2-bm_2016_08\exp';
+% pathRest = '_d07t05n03_v0.068mlmin-1_c02.5e-4w%_multiplescantest_dimax_2x_100mm_0.4msecexptime_360degpersec_rolling_100umluag_1mmc2mmglass_2.657mrad_usarm1.1502_monoy_-10.0_ahutch\';
 % ATTENTION: When changing experimentID also change the beginning of pathRest!
-experimentID=41;
+experimentIDt0 = 70;
+experimentID = 71;
 stackScanRange = 1:5; % actual number of time steps
 
+% Which images from a single CT-scan (1...569) shall be read? 
+imgRangeMin = 100;
+imgRangeMax = 300;
+
 % specify the search radius 
-r0 = 5; % 15 [px]
-dr = 2.5; % 5 [px]
-rmax = 20; % 50 [px] equals (rmax-r0)/dr = 7 iterations
-cone = 1; % cone search or regular search?
+r0 = 15; %[px]
+dr = 5; %[px]
+rmax = 50; %[px] equals (rmax-r0)/dr = 7 iterations
 
 % particle volume, comes from particle size distribution plots and known
-% particle diameter (d50 = 18�m = 3.6px)
+% particle diameter (d50 = 18µm = 3.6px)
 minParticleSize = 7; %[px^3] equals d = 2.5px
 maxParticleSize = 100; %[px^3] equals d = 5.8px
 
@@ -32,8 +36,8 @@ for i=stackScanRange
     disp(['Time step is ' num2str(find(i==stackScanRange))]);
     
     % read stack
-    stackBaseFile = pathCreation(pathBase, pathRest, experimentID, i, ispc);
-    stack = readtimeseries(stackBaseFile,'',[100 300],0,0);
+    stackBaseFile = pathCreation(pathBase, pathRest, experimentID, i, ispc, 'part');
+    stack = readtimeseries(stackBaseFile,'',[imgRangeMin imgRangeMax],0,0);
 
     % Read all "particles" from 3d image stack. 
     % Set minimum and maximum particle size to reduce computational cost
@@ -70,7 +74,7 @@ for i=stackScanRange
         %                   found multiple partners in time step i
         %                   o ---> o o  (bad)
         %   multipleFound   contains all particles from time step i-1 where
-        %                   at least two particles from ftime step i-1 
+        %                   at least two particles from time step i-1 
         %                   found the same particle in time step i
         %                   o o ---> o  (bad)
         % Particles that do not appear in one of those three arrays had no
@@ -80,6 +84,12 @@ for i=stackScanRange
         skip = int16.empty;
         multipleFound = int16.empty;
             
+        % Particles Buffer is an auxiliary array that stores the particle
+        % IDs of two succesive time steps if there was a single match.
+        % This is true for case 'found' and 'multipleFound'. A
+        % differentiation between both cases is done after all particles
+        % have been checked within one radius-loop.
+        
         particlesBuffer=zeros(4,size(particles,2));
         
         for ri=r0:dr:rmax
@@ -108,7 +118,7 @@ for i=stackScanRange
                 % time step t=t3, the position of t2 is the basis to find
                 % another match and so on.
                 
-                [nearbyIds,nearbyCenters] = findNearbyParticles(particles(:,ii,i-1),msrCenters,ri,cone);
+                [nearbyIds,nearbyCenters] = findNearbyParticles(particles(:,ii,i-1),msrCenters,ri);
                 % particles(:,ii,i-1) are all three dimensions of particle ii at the last time step (i-1).
                 
                 % if length(nearbyIds)==0, there was no nearby particle. No
@@ -129,7 +139,7 @@ for i=stackScanRange
             end
                             
             % After all particles (time step i-1) have been checked,
-            % clarify which particles from time step i are found.
+            % clarify which particles from time step i are matched once/multiple times.
             for kk=1:max(particlesBuffer(1,:)) % max nearbyIds in particlesBuffer
                 % The position of particlesBuffer equals ii (here tmp), the
                 % value equals nearbyIds (here kk).
@@ -147,9 +157,7 @@ for i=stackScanRange
                 end
             end
             % Sort found.
-            found = found';
-            found = sortrows(found,1);
-            found = found';
+            found = (sortrows(found',1))';
             
             % Remove it from measure array by putting zeros in the
             % array at the specific row.
@@ -167,23 +175,93 @@ for i=stackScanRange
     end     
 end
 
+%% Check if individual particle displacement vectors penetrate filter wall
+% Particle displacement vectors must not penetrate the filter wall. If so,
+% the particle tracking algorithm found (most likely) an erroneous match.
+
+% Read binarized image of porous filter (1==bulk, 0==pore).
+stackBaseFileT0 = pathCreation(pathBase, pathRest, experimentIDt0, 1, ispc, 'filt');
+stackFilt = readtimeseries(stackBaseFileT0,'',[imgRangeMin imgRangeMax],0,0)>0;
+
+% Loop through particles
+for bb=1:size(particles,2)
+    x = reshape(particles(1,bb,:),[length(stackScanRange) 1]);
+    y = reshape(particles(2,bb,:),[length(stackScanRange) 1]);
+    z = reshape(particles(3,bb,:),[length(stackScanRange) 1]);
+    
+    if any(x + y + z == 0) % is not in 'found'
+        continue
+    end
+
+    for cc=1:length(stackScanRange)-1
+        % vector of particle bb between two time steps (cc and cc+1)
+        xx = [x(cc+1)-x(cc), y(cc+1)-y(cc), z(cc+1)-z(cc)];
+        % length (norm) of xx (rounded down)
+        normVec = floor(norm(xx));
+        if normVec<1    % particle displacement is smaller than a single px (5mu)...skip that
+            continue
+        end
+        dirVec = xx/normVec;
+        
+        % Check if vector xx penetrates filter wall. To do so check
+        % pixel-wise along the displacement vector if particle leaves a
+        % pore (penetrates the filter).
+        for dd=1:normVec
+            point = round([x(cc), y(cc), z(cc)]+dd*dirVec);
+            if stackFilt(point)==1 % == filter
+                % If so, put flag in particles(:,bb,cc). x, y and z will be
+                % negative (out of image bounds) which can be used later on in display section.
+                particles(:,bb,cc) = -particles(:,bb,cc);
+            end
+        end
+    end
+end
+
 %% Display
 % strip array of all particles that contain 0 coordinates:
 figure;
 hold on
-j = 1;
+j = 0;
 for aa=1:size(particles,2)
     % rearrange
     x = reshape(particles(1,aa,:),[length(stackScanRange) 1]);
     y = reshape(particles(2,aa,:),[length(stackScanRange) 1]);
     z = reshape(particles(3,aa,:),[length(stackScanRange) 1]);
-    if any(x + y + z == 0)
+
+    if any(x + y + z == 0) % is not in 'found'
         continue
-    else
-        j= j+1;
-        plot3(x,y,z)
+    elseif any (x + y + z < 0) % at some point penetrates Filter
+        j = j+1;
+        hitFilt = find(x + y + z < 0); % in which of the displacement-vector sections is the filter hit (penetrated)
+        for ee=1:length(stackScanRange)-1
+            if ismember(ee,hitFilt)
+                color = 'red'; % Between those two time steps the filter wall is penetrated
+                x(ee) = -x(ee); % make values positive again for proper plotting
+                y(ee) = -y(ee);
+                z(ee) = -z(ee);
+            else
+                color = 'blue'; % Everyting ok here.
+            end
+            plot3(x(ee:ee+1), y(ee:ee+1), z(ee:ee+1),color)
+        end
+        % Put a marker (point) at the last vector position to indicate the
+        % particle direction.
+        plot3(x(length(stackScanRange)),...
+            y(length(stackScanRange)),...
+            z(length(stackScanRange)),[color '.'],'MarkerSize',5)
+    else % everything ok
+        j = j+1;
+        color = 'blue';
+        plot3(x,y,z,color)
+        % Put a marker (point) at the last vector position to indicate the
+        % particle direction.
+        plot3(x(length(stackScanRange)),...
+            y(length(stackScanRange)),...
+            z(length(stackScanRange)),[color '.'],'MarkerSize',5)
     end
-    %if j>=50
-    %    break
-    %end
+%     if j>=50
+%        break
+%     end
 end
+grid on
+view(-30,45)
