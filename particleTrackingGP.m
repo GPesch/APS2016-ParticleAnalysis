@@ -20,6 +20,7 @@ r0 = 5; % 15 [px]
 dr = 2.5; % 5 [px]
 rmax = 20; % 50 [px] equals (rmax-r0)/dr = 7 iterations
 cone = 1; % cone search or regular search?
+boolPos = 1; %do particles move in positive z direction (1) or negative z direction (0)?
 
 % particle volume, comes from particle size distribution plots and known
 % particle diameter (d50 = 18�m = 3.6px)
@@ -31,9 +32,12 @@ maxParticleSize = 100; %[px^3] equals d = 5.8px
 for i=stackScanRange
     disp(['Time step is ' num2str(find(i==stackScanRange))]);
     
-    % read stack
-    stackBaseFile = pathCreation(pathBase, pathRest, experimentID, i, ispc);
-    stack = readtimeseries(stackBaseFile,'',[100 300],0,0);
+    % create stack base file path for real scans
+    % stackBaseFile = pathCreation(pathBase, pathRest, experimentID, i, ispc);
+    
+    % create stack base file path for benchmark images
+    stackBaseFile = ['benchmarkPics/time' num2str(i) '/im*.tif'];
+    stack = readtimeseries(stackBaseFile,'',[],0,0);
 
     % Read all "particles" from 3d image stack. 
     % Set minimum and maximum particle size to reduce computational cost
@@ -108,7 +112,7 @@ for i=stackScanRange
                 % time step t=t3, the position of t2 is the basis to find
                 % another match and so on.
                 
-                [nearbyIds,nearbyCenters] = findNearbyParticles(particles(:,ii,i-1),msrCenters,ri,cone);
+                [nearbyIds,nearbyCenters] = findNearbyParticles(particles(:,ii,i-1),msrCenters,ri,cone,boolPos);
                 % particles(:,ii,i-1) are all three dimensions of particle ii at the last time step (i-1).
                 
                 % if length(nearbyIds)==0, there was no nearby particle. No
@@ -146,10 +150,12 @@ for i=stackScanRange
                     end
                 end
             end
-            % Sort found.
-            found = found';
-            found = sortrows(found,1);
-            found = found';
+            % Sort found t.
+%             found = found';
+%             found = sortrows(found,1);
+%             found = found';
+            found = sort(found);
+            
             
             % Remove it from measure array by putting zeros in the
             % array at the specific row.
@@ -182,6 +188,11 @@ for aa=1:size(particles,2)
     else
         j= j+1;
         plot3(x,y,z)
+        % Put a marker (point) at the last vector position to indicate the
+        % particle direction.
+        plot3(x(length(stackScanRange)), ...
+            y(length(stackScanRange)), ...
+            z(length(stackScanRange)),['r.'],'MarkerSize',5)
     end
     %if j>=50
     %    break
