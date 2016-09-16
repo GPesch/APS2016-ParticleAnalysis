@@ -1,4 +1,4 @@
-function [pathReturn] = pathCreation(pathBase, pathRest, experimentID, scanID, ispc)
+function [pathReturn] = pathCreation(pathBase, pathRest, experimentID, scanID, ispc, binWhat)
     % Creates string to load image stack.
     experiment = num2str(experimentID,'%03.0f');
     % Project ID can be calculated from experiment ID. However, after 
@@ -13,9 +13,9 @@ function [pathReturn] = pathCreation(pathBase, pathRest, experimentID, scanID, i
     
     % care for OS -> '/' or '\' for subfolders
     if ispc
-        pathReturn = [pathBase experiment pathRest 'bin_part_proj_' project '_scan_' scan '\bin_part_proj_' project '_scan_' scan '_00000.tif'];
+        pathReturn = [pathBase experiment pathRest 'bin_' binWhat '_proj_' project '_scan_' scan '\bin_' binWhat '_proj_' project '_scan_' scan '_00000.tif'];
     else
-        pathReturn = [pathBase experiment pathRest 'bin_part_proj_' project '_scan_' scan '/bin_part_proj_' project '_scan_' scan '_00000.tif'];
+        pathReturn = [pathBase experiment pathRest 'bin_' binWhat '_proj_' project '_scan_' scan '/bin_' binWhat '_proj_' project '_scan_' scan '_00000.tif'];
     end
 end
 
