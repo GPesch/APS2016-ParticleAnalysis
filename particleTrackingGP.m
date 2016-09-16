@@ -16,10 +16,9 @@ experimentID=41;
 stackScanRange = 1:5; % actual number of time steps
 
 % specify the search radius 
-r0 = 5; % 15 [px]
-dr = 2.5; % 5 [px]
-rmax = 20; % 50 [px] equals (rmax-r0)/dr = 7 iterations
-cone = 1; % cone search or regular search?
+r0 = 15; % 15 [px]
+dr = 5; % 5 [px]
+rmax = 50; % 50 [px] equals (rmax-r0)/dr = 7 iterations
 
 % particle volume, comes from particle size distribution plots and known
 % particle diameter (d50 = 18�m = 3.6px)
@@ -108,7 +107,7 @@ for i=stackScanRange
                 % time step t=t3, the position of t2 is the basis to find
                 % another match and so on.
                 
-                [nearbyIds,nearbyCenters] = findNearbyParticles(particles(:,ii,i-1),msrCenters,ri,cone);
+                [nearbyIds,nearbyCenters] = findNearbyParticles(particles(:,ii,i-1),msrCenters,ri);
                 % particles(:,ii,i-1) are all three dimensions of particle ii at the last time step (i-1).
                 
                 % if length(nearbyIds)==0, there was no nearby particle. No
