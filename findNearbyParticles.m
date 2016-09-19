@@ -8,7 +8,6 @@ function [ids, centers] = findNearbyParticles(pos, msrCenters, r, cone)
     % (specified by its postion pos).
     ids = inCircle(pos,msrCenters,r)
     centers=[];
-   
     
     if(~isempty(ids))
         centers = msrCenters(:,ids);

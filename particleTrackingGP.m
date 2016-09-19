@@ -25,6 +25,7 @@ r0 = 15; %[px]
 dr = 5; %[px]
 rmax = 50; %[px] equals (rmax-r0)/dr = 7 iterations
 
+
 % particle volume, comes from particle size distribution plots and known
 % particle diameter (d50 = 18µm = 3.6px)
 minParticleSize = 7; %[px^3] equals d = 2.5px
