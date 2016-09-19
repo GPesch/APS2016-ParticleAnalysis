@@ -1,9 +1,4 @@
-function [ids, centers] = findNearbyParticles(pos, msrCenters, r, cone)
-    % check wether simple or with cone. Simple just looks for particles in
-    % spheres around the original position.
-    % cone looks in smaller spheres but also in a cone which is open
-    % towards negative z (thus in flow direction!)
-
+function [ids, centers] = findNearbyParticles(pos, msrCenters, r)
     % Look for other particles within circle (radius r) around particle ii
     % (specified by its postion pos).
     ids = inCircle(pos,msrCenters,r)
