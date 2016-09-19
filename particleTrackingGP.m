@@ -157,12 +157,11 @@ for i=stackScanRange
                 end
             end
             % Sort found.
-            if(~isempty(found))
-                found = (sortrows(found',1))';
-                % Remove it from measure array by putting zeros in the
-                % array at the specific row.
-                [~,msrCenters]=treatArray(msrCenters,'remove',particlesBuffer(1,found));
-            end
+            found = (sortrows(found',1))';
+            
+            % Remove it from measure array by putting zeros in the
+            % array at the specific row.
+            [~,msrCenters]=treatArray(msrCenters,'remove',particlesBuffer(1,found));
             
             disp(['Found partners in ri ' num2str(size(found,2)) ]);
             disp(['Too many partners    ' num2str(size(skip,2)) ]);
@@ -209,11 +208,10 @@ for bb=1:size(particles,2)
         % pore (penetrates the filter).
         for dd=1:normVec
             point = round([x(cc), y(cc), z(cc)]+dd*dirVec);
-            if dip_array(stackFilt(point(1),point(2),point(3)))==1 % == filter
+            if stackFilt(point)==1 % == filter
                 % If so, put flag in particles(:,bb,cc). x, y and z will be
                 % negative (out of image bounds) which can be used later on in display section.
                 particles(:,bb,cc) = -particles(:,bb,cc);
-                break
             end
         end
     end
@@ -235,13 +233,12 @@ for aa=1:size(particles,2)
     elseif any (x + y + z < 0) % at some point penetrates Filter
         j = j+1;
         hitFilt = find(x + y + z < 0); % in which of the displacement-vector sections is the filter hit (penetrated)
-        % Make values positive again for proper plotting.
-        x(hitFilt) = -x(hitFilt);
-        y(hitFilt) = -y(hitFilt);
-        z(hitFilt) = -z(hitFilt);
         for ee=1:length(stackScanRange)-1
             if ismember(ee,hitFilt)
                 color = 'red'; % Between those two time steps the filter wall is penetrated
+                x(ee) = -x(ee); % make values positive again for proper plotting
+                y(ee) = -y(ee);
+                z(ee) = -z(ee);
             else
                 color = 'blue'; % Everyting ok here.
             end
