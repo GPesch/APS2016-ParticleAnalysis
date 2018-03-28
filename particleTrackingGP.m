@@ -1,29 +1,36 @@
-%%% changelog.
-
+%% changelog.
+% original version  particleTrackingGP
+% version 0_0_1     added subfunction calcLengthAndTimeSteps() for further evaluation
+%                   - truncate 'particles' array to particles which were
+%                   found in e.g. 10 time steps (-> user input)
+%                   - calculate the length of the path as additional info
+%                   - meta data is automatically saved in folder
+% version 0_0_2     added subfunction drawPathInImage() (-> user input)
+%                   -> needs calcLengthAndTimeSteps() becasue of idsOfInterest
 
 %% User input
 ispc= 0; %0 if linux, 1 if winOS
 % linux work:
-pathBase = '/home/gp/Pesch/Ph.D./unshared/APS_Tomographie/Exp';
-pathRest = '/Thres=0.0005,MedRad=2/';
+pathBase = '/run/media/reco/TOMO_GERD_2/APS/Data/Exp';
+pathRest = '_D07T10N12_V0.068mlmin-1_C02.5E-4w%_multipleScanTest_dimax_2x_100mm_0.4msecExpTime_360DegPerSec_Rolling_100umLuAG_1mmC2mmGlass_2.657mrad_USArm1.1502_monoY_-10.0_AHutch/';
 % mac home:
 % stackBasePath = '/Volumes/Untitled/APS_Tomography/Exp041/Thres=0.0005,MedRad=0/bin_part_proj_0121_scan_'
 % win OS:
 % pathBase = 'f:\aps_2-bm_2016_08\exp';
 % pathRest = '_d07t05n03_v0.068mlmin-1_c02.5e-4w%_multiplescantest_dimax_2x_100mm_0.4msecexptime_360degpersec_rolling_100umluag_1mmc2mmglass_2.657mrad_usarm1.1502_monoy_-10.0_ahutch\';
-% ATTENTION: When changing experimentID also change the beginning of pathRest!
-experimentIDt0 = 70;
-experimentID = 71;
-stackScanRange = 1:5; % actual number of time steps
+% ATTENTION: When changing experimentID also change the beginning of pathRest (sample id, V, c0)!
+experimentIDt0 = 49;
+experimentID = 50;
+stackScanRange = 1:20; % actual number of time steps
 
 % Which images from a single CT-scan (1...569) shall be read? 
-imgRangeMin = 100;
-imgRangeMax = 300;
+imgRangeMin = 1;
+imgRangeMax = 400;
 
 % specify the search radius 
 r0 = 15; %[px]
 dr = 5; %[px]
-rmax = 50; %[px] equals (rmax-r0)/dr = 7 iterations
+rmax = 50; %[px] equals (rmax-r0)/dr = 7 + 1 iterations
 
 
 % particle volume, comes from particle size distribution plots and known
@@ -31,10 +38,22 @@ rmax = 50; %[px] equals (rmax-r0)/dr = 7 iterations
 minParticleSize = 7; %[px^3] equals d = 2.5px
 maxParticleSize = 100; %[px^3] equals d = 5.8px
 
+% relevant time steps. The user is interested in particles that are
+% found/matched in that many successive time steps.
+% ATTENTION: must be <= size(stackScanRange,2) (i.e. number of time steps)
+% Do this calculation (true/false)?
+boolRelevTimeSteps = true;
+relevTimeSteps = 10;
+
+% to enable the drawing of found particle paths in an extra 3D image set
+% following  variable to true.
+boolDrawPathInImage = true;
+
 %% Calculation
 % iteration through TIME STEPS
 for i=stackScanRange
     disp(['Time step is ' num2str(find(i==stackScanRange))]);
+    disp('---');
     
     % read stack
     stackBaseFile = pathCreation(pathBase, pathRest, experimentID, i, ispc, 'part');
@@ -57,11 +76,19 @@ for i=stackScanRange
     % At the first image we fill an array with initial particle positions
     % we then try to find in the other time steps to find partners.
     
-    % first time step t=t_1?
+    % first time step t=t1?
     if i == stackScanRange(1)
         % initialize particle array
         % three-dimensional; dim 1 = [x y z], dim 2 = particle number ii,
         % dim 3 = time step i
+        %
+        % t1:                       t2:
+        %    |p1 |p2 |p3 |p4 ...       |p1 |p2 |p3 |p4 ...
+        %    ----------------          ----------------
+        %  x |x1 |x2 |x3 |x4 ...     x |x1 |x2 |x3 |x4 ...
+        %  y |y1 |y2 |y3 |y4 ...     y |y1 |y2 |y3 |y4 ...
+        %  z |z1 |z2 |z3 |z4 ...     z |z1 |z2 |z3 |z4 ...
+        %
         particles = zeros(3,numberParticles,max(stackScanRange));
         particles(:,:,1) = msrCenters(:,:);
     else % t>t_1
@@ -86,26 +113,37 @@ for i=stackScanRange
         multipleFound = int16.empty;
             
         % Particles Buffer is an auxiliary array that stores the particle
-        % IDs of two succesive time steps if there was a single match.
+        % IDs of the current time step in order to check whether there was a single match.
         % This is true for case 'found' and 'multipleFound'. A
         % differentiation between both cases is done after all particles
         % have been checked within one radius-loop.
-        
+        %                      
+        %    |p1 |p2 |p3 |p4 ...
+        %    ----------------  
+        %  id|id1|id2|id3|id4...
+        %  x |x1 |x2 |x3 |x4 ...
+        %  y |y1 |y2 |y3 |y4 ...
+        %  z |z1 |z2 |z3 |z4 ...
+        %
         particlesBuffer=zeros(4,size(particles,2));
         
         for ri=r0:dr:rmax
-            disp(['Search radius ri =   ' num2str(ri) ]);
-            disp(['Considering          ' num2str(length(nonzeros(particles(1,:,i-1)))) ' / ' num2str(size(particles,2)) ' particles' ])
-            disp(['Possible partners    ' num2str(length(msr.Id)) ]);
+            disp(['Search radius ri =               : ' num2str(ri) ]);
+            disp(['Considering                      : ' num2str(length(nonzeros(particles(1,:,i-1)))) ' / ' num2str(size(particles,2)) ' particles' ])
+            disp(['Possible partners                : ' num2str(length(msr.Id)) ]);
             
-            for ii=1:size(particles,2) % iterate through all particles found in t=t_1
-                % skip all particles that already have partners (1 or more)
+            for ii=1:size(particles,2) % iterate through all particles found in t=t1
+                % skip all particles that already have partners (1 or
+                % more). E.g. in a previous time step particle ii
+                % was found to have several possible matches. Hence its id
+                % was added to 'skip'. In the current time step t this
+                % particle is not further considered due to the following if-statement.
                 if ismember(ii,horzcat(found,skip,multipleFound))
                     continue
                 end
                 
                 % skip all particles that didn't have a partner the
-                % timestep before
+                % timestep before.
                 if sum(particles(:,ii,i-1) == 0) %% any before
                     continue
                 end
@@ -142,8 +180,9 @@ for i=stackScanRange
             % After all particles (time step i-1) have been checked,
             % clarify which particles from time step i are matched once/multiple times.
             for kk=1:max(particlesBuffer(1,:)) % max nearbyIds in particlesBuffer
-                % The position of particlesBuffer equals ii (here tmp), the
-                % value equals nearbyIds (here kk).
+                % The position (row 1, col xy) of particlesBuffer equals ii (particle id of
+                % the first time step; here tmp), the value equals nearbyIds 
+                % (particle ids of the curretn time step; here kk).
                 tmp = find(particlesBuffer(1,:)==kk);
                 if size(tmp,2)==1 % one particle has been matched once
                     if ~ismember(tmp,found) % if it is not already in found
@@ -161,14 +200,15 @@ for i=stackScanRange
             if(~isempty(found))
                 found = (sortrows(found',1))';
                 % Remove it from measure array by putting zeros in the
-                % array at the specific row.
+                % array at the specific row. In the next iteration of the
+                % radius those are not considered any more.
                 [~,msrCenters]=treatArray(msrCenters,'remove',particlesBuffer(1,found));
             end
             
-            disp(['Found partners in ri ' num2str(size(found,2)) ]);
-            disp(['Too many partners    ' num2str(size(skip,2)) ]);
-            disp(['Found same particle  ' num2str(size(multipleFound,2)) ]);
-            disp(['No match found       ' num2str(length(nonzeros(particles(1,:,i-1)))-size(multipleFound,2)-size(skip,2)-size(found,2)) ]);
+            disp(['Found partners in ri  o   -> o   : ' num2str(size(found,2)) ]);
+            disp(['Too many partners     o   -> o o : ' num2str(size(skip,2)) ]);
+            disp(['Found same particle   o o -> o   : ' num2str(size(multipleFound,2)) ]);
+            disp(['No match found                   : ' num2str(length(nonzeros(particles(1,:,i-1)))-size(multipleFound,2)-size(skip,2)-size(found,2)) ]);
             disp('---');
         end
         % Save new particle position.
@@ -176,6 +216,9 @@ for i=stackScanRange
         disp('=====================================================');
     end     
 end
+
+%save 'particles' array
+dlmwrite([pathBase num2str(experimentID,'%03.0f') pathRest 'particlesTracked_particleTrackingGP_0_0_1_FiltEval0_2_1.txt'],particles,'delimiter','\t','precision',8)
 
 %% Check if individual particle displacement vectors penetrate filter wall
 % Particle displacement vectors must not penetrate the filter wall. If so,
@@ -218,6 +261,29 @@ for bb=1:size(particles,2)
             end
         end
     end
+end
+
+% save 'particles' array
+% ATTENTION: saved array has only 2 dimensions. (3, particles x
+% time_steps). Must be rearranged if reloaded (using particles=dlmread(path)).
+dlmwrite([pathBase num2str(experimentID,'%03.0f') pathRest 'particlesTracked_particleTrackingGP_0_0_1_FiltEval0_2_1.txt'],particles,'delimiter','\t','precision',8);
+
+%% Further evaluation of 'particles' array (e.g. length of path)
+
+if boolRelevTimeSteps % -> user input
+    % do calculations. Results are saved as txt-files. Two results are
+    % returned (the particle ids that match the conditions - i.e. those 
+    % were found in x time steps - and the corresponding path lengths).
+    [idsOfInterest, pathLength] = calcLengthAndTimeSteps(particles, relevTimeSteps, stackScanRange, pathBase, pathRest, experimentID);
+end
+% look at path length. e.g.: hist(pathLength(:,3),[1 2 5 10 20 50 100 200 500])
+
+
+if (boolDrawPathInImage && boolRelevTimeSteps) % -> user input
+    % draw found particle paths in a 3D image. Main input value is
+    % 'particle' array (without negative values -> abs(particles)).
+    % No return value.
+    drawPathInImage(abs(particles), stackScanRange, idsOfInterest, (imgRangeMax - imgRangeMin + 1), pathBase, pathRest, experimentID);
 end
 
 %% Display
@@ -263,9 +329,6 @@ for aa=1:size(particles,2)
             y(length(stackScanRange)),...
             z(length(stackScanRange)),[color '.'],'MarkerSize',5)
     end
-%     if j>=50
-%        break
-%     end
 end
 grid on
 view(-30,45)
